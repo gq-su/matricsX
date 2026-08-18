@@ -1,0 +1,56 @@
+:root {
+  --text: #1a2332;
+  --muted: #5c6b7a;
+  --placeholder: #8a97a5;
+  --bg: #eef2f5;
+  --surface: #fbfcfd;
+  --border: #cfd8e1;
+  --accent: #0f6e56;
+  --accent-ink: #f4fbf8;
+  --accent-soft: rgba(15, 110, 86, 0.16);
+
+  --sans: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, Consolas, monospace;
+
+  font: 16px/1.45 var(--sans);
+  color: var(--text);
+  background:
+    radial-gradient(ellipse 80% 50% at 10% -10%, #d5e8e2 0%, transparent 55%),
+    radial-gradient(ellipse 60% 40% at 100% 0%, #dce4ef 0%, transparent 50%),
+    var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100svh;
+}
+
+#root {
+  min-height: 100svh;
+}
+
+h1,
+h2 {
+  font-family: var(--sans);
+  font-weight: 600;
+  color: var(--text);
+}
+
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
