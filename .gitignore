@@ -13,8 +13,8 @@ dist-ssr
 *.local
 
 # Local JSON data store (keep folder)
-data/*
-!data/.gitkeep
+# data/*
+# !data/.gitkeep
 
 # Editor directories and files
 .vscode/*
