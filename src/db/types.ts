@@ -13,6 +13,10 @@ export type Leader = {
   /** Optional components; volprice may exist without them (legacy / blank amend). */
   close?: number
   volume?: number
+  /** CSV percentage change for a ticker first admitted through auto-import. */
+  percentChange?: number
+  /** Marks a ticker newly added from the CSV's initial top-10 range. */
+  isNewTicker?: boolean
   /** Market close instant (ISO 8601). Groups the day's inputs. */
   closeTime: string
   source: LeaderSource

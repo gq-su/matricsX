@@ -1,4 +1,4 @@
-import { todayMarketDay } from './types'
+import { marketDayFromCloseTime, todayMarketDay } from './types'
 import {
   exportSnapshot,
   importSnapshot,
@@ -11,7 +11,7 @@ const HANDLE_DB = 'matricsx-backup-meta'
 const HANDLE_STORE = 'handles'
 const DIR_HANDLE_KEY = 'backupDir'
 const RETENTION_KEY = 'matricsx.backupRetentionDays'
-const DEFAULT_RETENTION_DAYS = 30
+const DEFAULT_RETENTION_DAYS = 10
 
 function openHandleDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -144,6 +144,122 @@ export async function pruneOldBackups(
 
 export async function hasLinkedDataFolder(): Promise<boolean> {
   return (await getStoredDirHandle()) !== null
+}
+
+type SnapshotCandidate = {
+  snapshot: unknown
+  latestMarketDay: string
+}
+
+function latestMarketDayInSnapshot(value: unknown): string | null {
+  if (!value || typeof value !== 'object') return null
+  const leaders = (value as { leaders?: unknown }).leaders
+  if (!Array.isArray(leaders) || leaders.length === 0) return null
+
+  const days = leaders.flatMap((row) => {
+    if (!row || typeof row !== 'object') return []
+    const closeTime = (row as { closeTime?: unknown }).closeTime
+    return typeof closeTime === 'string' && /^\d{4}-\d{2}-\d{2}/.test(closeTime)
+      ? [marketDayFromCloseTime(closeTime)]
+      : []
+  })
+  return days.length > 0 ? days.sort().at(-1) ?? null : null
+}
+
+function isReadableBackupSnapshot(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false
+  const snapshot = value as {
+    version?: unknown
+    tickers?: unknown
+    leaders?: unknown
+  }
+  if (
+    (snapshot.version === 1 || snapshot.version === 2 || snapshot.version === 3) &&
+    Array.isArray(snapshot.tickers) &&
+    Array.isArray(snapshot.leaders)
+  ) {
+    return (
+      snapshot.tickers.every(
+        (ticker) =>
+          !!ticker &&
+          typeof ticker === 'object' &&
+          typeof (ticker as { id?: unknown }).id === 'number' &&
+          typeof (ticker as { label?: unknown }).label === 'string',
+      ) &&
+      snapshot.leaders.every(
+        (leader) =>
+          !!leader &&
+          typeof leader === 'object' &&
+          typeof (leader as { id?: unknown }).id === 'number' &&
+          typeof (leader as { tickerId?: unknown }).tickerId === 'number' &&
+          typeof (leader as { volprice?: unknown }).volprice === 'number',
+      )
+    )
+  }
+  return false
+}
+
+function emptySnapshot(): BackupSnapshot {
+  return {
+    version: 3,
+    exportedAt: new Date().toISOString(),
+    tickers: [],
+    leaders: [],
+  }
+}
+
+async function selectCsvImportDirectory(): Promise<FileSystemDirectoryHandle> {
+  const existing = await getStoredDirHandle()
+  if (existing) return existing
+
+  const pick = window.showDirectoryPicker
+  if (!pick) {
+    throw new Error('This browser cannot link a folder for CSV import.')
+  }
+
+  const dir = await pick({ id: 'matricsx-data', mode: 'readwrite' })
+  await setStoredDirHandle(dir)
+  await ensureDirPermission(dir)
+
+  // A marker keeps the same first-link behavior without copying a potentially
+  // stale browser database into the folder before the authoritative restore.
+  const filename = backupFileName()
+  try {
+    await dir.getFileHandle(filename)
+  } catch {
+    await writeToDirectory(dir, emptySnapshot(), filename)
+  }
+  return dir
+}
+
+/**
+ * Restore the newest non-empty dated backup for a CSV import. The linked
+ * folder is the authority, so no backup means an intentionally empty store.
+ */
+export async function restoreLatestBackupForCsvImport(): Promise<{
+  latestMarketDay: string | null
+}> {
+  const dir = await selectCsvImportDirectory()
+  await ensureDirPermission(dir)
+  let latest: SnapshotCandidate | null = null
+
+  for await (const entry of dir.values()) {
+    if (entry.kind !== 'file' || !fileDay(entry.name)) continue
+    try {
+      const file = await entry.getFile()
+      const snapshot: unknown = JSON.parse(await file.text())
+      const latestMarketDay = latestMarketDayInSnapshot(snapshot)
+      if (!latestMarketDay || !isReadableBackupSnapshot(snapshot)) continue
+      if (!latest || latestMarketDay > latest.latestMarketDay) {
+        latest = { snapshot, latestMarketDay }
+      }
+    } catch {
+      // Skip malformed or unreadable files and continue looking for a backup.
+    }
+  }
+
+  await importSnapshot(latest?.snapshot ?? emptySnapshot())
+  return { latestMarketDay: latest?.latestMarketDay ?? null }
 }
 
 /** Link project `data/` (or any folder) for dated JSON backups. */

@@ -12,9 +12,16 @@ dist
 dist-ssr
 *.local
 
-# Local JSON data store (keep folder)
+# Local JSON data store (keep folder). Track the data folder, ignore its contents
 data/*
 !data/.gitkeep
+matricsx-backup_*.json
+
+# Ignore data.src folder completely
+/data.src/
+
+# Local comparison snapshots are never committed.
+/data.bak/
 
 # Editor directories and files
 .vscode/*

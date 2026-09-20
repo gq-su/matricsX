@@ -10,6 +10,7 @@ import {
   setRetentionDays,
   writeBackup,
 } from './db/backup'
+import { importPriceVolumeLeaderboardCsv } from './db/csv'
 import {
   deleteLeader,
   deleteLeadersForClose,
@@ -44,6 +45,12 @@ function entryPayload(close: string, volume: string) {
   return { close: c, volume: v, volprice }
 }
 
+function formatPercentChange(value: number): string {
+  return `${value > 0 ? '+' : ''}${value.toLocaleString(undefined, {
+    maximumFractionDigits: 2,
+  })}%`
+}
+
 function App() {
   const [rows, setRows] = useState<TickerInput[]>(EMPTY_ROWS)
   const [priorPick, setPriorPick] = useState('')
@@ -60,6 +67,7 @@ function App() {
   const [linked, setLinked] = useState(false)
   const [retentionDays, setRetentionDaysState] = useState(getRetentionDays)
   const importRef = useRef<HTMLInputElement>(null)
+  const csvImportRef = useRef<HTMLInputElement>(null)
 
   const selectedClose = marketCloseTime(marketDay)
   const priorVolPrice = calcVolPrice(priorClose, priorVolume)
@@ -148,6 +156,8 @@ function App() {
         volprice: row.volprice,
         ...(row.close != null ? { close: row.close } : {}),
         ...(row.volume != null ? { volume: row.volume } : {}),
+        ...(row.percentChange != null ? { percentChange: row.percentChange } : {}),
+        ...(row.isNewTicker ? { isNewTicker: true } : {}),
       }))
     const priors = dayRows
       .filter((row) => row.source === 'prior')
@@ -156,6 +166,8 @@ function App() {
         volprice: row.volprice,
         ...(row.close != null ? { close: row.close } : {}),
         ...(row.volume != null ? { volume: row.volume } : {}),
+        ...(row.percentChange != null ? { percentChange: row.percentChange } : {}),
+        ...(row.isNewTicker ? { isNewTicker: true } : {}),
       }))
     return { top5, priors }
   }
@@ -237,6 +249,8 @@ function App() {
           volprice: row.volprice,
           ...(row.close != null ? { close: row.close } : {}),
           ...(row.volume != null ? { volume: row.volume } : {}),
+          ...(row.percentChange != null ? { percentChange: row.percentChange } : {}),
+          ...(row.isNewTicker ? { isNewTicker: true } : {}),
         }))
 
       await saveDayInputs(selectedClose, top5, priors)
@@ -335,6 +349,23 @@ function App() {
       setStatus(error instanceof Error ? error.message : 'Import failed.')
     } finally {
       if (importRef.current) importRef.current.value = ''
+    }
+  }
+
+  async function onImportCsv(file: File | undefined) {
+    if (!file) return
+    try {
+      const result = await importPriceVolumeLeaderboardCsv(file)
+      await writeBackup(result.marketDay)
+      setMarketDay(result.marketDay)
+      await refresh(result.marketDay)
+      setStatus(
+        `Imported ${result.rows} CSV row(s) for ${result.marketDay}.`,
+      )
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'CSV import failed.')
+    } finally {
+      if (csvImportRef.current) csvImportRef.current.value = ''
     }
   }
 
@@ -562,12 +593,13 @@ function App() {
           <button type="button" className="secondary" onClick={() => void onLinkFolder()}>
             Link data folder
           </button>
-          <button type="button" className="secondary" onClick={() => void onExport()}>
+          <button type="button" className="secondary" disabled={!linked} onClick={() => void onExport()}>
             Export JSON
           </button>
           <button
             type="button"
             className="secondary"
+            disabled={!linked}
             onClick={() => importRef.current?.click()}
           >
             Import JSON
@@ -578,6 +610,21 @@ function App() {
             accept="application/json,.json"
             className="sr-only"
             onChange={(e) => void onImportFile(e.target.files?.[0])}
+          />
+          <button
+            type="button"
+            className="secondary"
+            disabled={!linked}
+            onClick={() => csvImportRef.current?.click()}
+          >
+            Import leaderboard CSV
+          </button>
+          <input
+            ref={csvImportRef}
+            type="file"
+            accept="text/csv,.csv"
+            className="sr-only"
+            onChange={(e) => void onImportCsv(e.target.files?.[0])}
           />
         </div>
       </section>
@@ -638,7 +685,20 @@ function App() {
                 return (
                   <tr key={row.id}>
                     <td>{row.rank}</td>
-                    <td className="ticker">{row.label}</td>
+                    <td
+                      className={
+                        row.isNewTicker
+                          ? `ticker ticker-new ${row.percentChange != null && row.percentChange > 0 ? 'up' : 'down'}`
+                          : 'ticker'
+                      }
+                    >
+                      {row.isNewTicker ? '*' : ''}{row.label}
+                      {row.isNewTicker && typeof row.percentChange === 'number' ? (
+                        <span className="ticker-change">
+                          {' '}({formatPercentChange(row.percentChange)})
+                        </span>
+                      ) : null}
+                    </td>
                     <td>
                       <input
                         className="amend-num"

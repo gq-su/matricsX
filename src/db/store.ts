@@ -136,6 +136,8 @@ export async function listLeaders(): Promise<Leader[]> {
     volprice: row.volprice as number,
     ...(typeof row.close === 'number' ? { close: row.close } : {}),
     ...(typeof row.volume === 'number' ? { volume: row.volume } : {}),
+    ...(typeof row.percentChange === 'number' ? { percentChange: row.percentChange } : {}),
+    ...(row.isNewTicker === true ? { isNewTicker: true } : {}),
     closeTime: row.closeTime as string,
     source: withSource(row),
   }))
@@ -199,6 +201,8 @@ export type DayEntry = {
   volprice: number
   close?: number
   volume?: number
+  percentChange?: number
+  isNewTicker?: boolean
   source: LeaderSource
 }
 
@@ -213,12 +217,16 @@ export async function saveDayInputs(
     volprice: number
     close?: number
     volume?: number
+    percentChange?: number
+    isNewTicker?: boolean
   }>,
   priors: Array<{
     tickerId: number
     volprice: number
     close?: number
     volume?: number
+    percentChange?: number
+    isNewTicker?: boolean
   }> = [],
 ): Promise<Leader[]> {
   if (!closeTime) {
@@ -255,6 +263,8 @@ export async function saveDayInputs(
       source: entry.source,
       ...(typeof entry.close === 'number' ? { close: entry.close } : {}),
       ...(typeof entry.volume === 'number' ? { volume: entry.volume } : {}),
+      ...(typeof entry.percentChange === 'number' ? { percentChange: entry.percentChange } : {}),
+      ...(entry.isNewTicker === true ? { isNewTicker: true } : {}),
     }
     const id = Number(await req(store.add(record)))
     saved.push({ id, ...record })
@@ -352,6 +362,8 @@ export async function updateLeader(
     source: patch.source ?? withSource(existing),
     ...(typeof nextClose === 'number' ? { close: nextClose } : {}),
     ...(typeof nextVolume === 'number' ? { volume: nextVolume } : {}),
+    ...(typeof existing.percentChange === 'number' ? { percentChange: existing.percentChange } : {}),
+    ...(existing.isNewTicker === true ? { isNewTicker: true } : {}),
   }
 
   await req(store.put(updated))
@@ -367,6 +379,8 @@ export type LeaderRow = {
   volprice: number
   close?: number
   volume?: number
+  percentChange?: number
+  isNewTicker?: boolean
   closeTime: string
   source: LeaderSource
   rank: number
@@ -387,6 +401,8 @@ export async function getDayInputs(closeTime: string): Promise<LeaderRow[]> {
       volprice: leader.volprice,
       ...(typeof leader.close === 'number' ? { close: leader.close } : {}),
       ...(typeof leader.volume === 'number' ? { volume: leader.volume } : {}),
+      ...(typeof leader.percentChange === 'number' ? { percentChange: leader.percentChange } : {}),
+      ...(leader.isNewTicker === true ? { isNewTicker: true } : {}),
       closeTime: leader.closeTime,
       source: leader.source,
       rank: index + 1,
@@ -444,6 +460,8 @@ function normalizeLeaders(value: unknown): Leader[] {
       volprice: leader.volprice,
       ...(typeof leader.close === 'number' ? { close: leader.close } : {}),
       ...(typeof leader.volume === 'number' ? { volume: leader.volume } : {}),
+      ...(typeof leader.percentChange === 'number' ? { percentChange: leader.percentChange } : {}),
+      ...(leader.isNewTicker === true ? { isNewTicker: true } : {}),
       closeTime:
         typeof leader.closeTime === 'string' && leader.closeTime
           ? leader.closeTime

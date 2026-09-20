@@ -446,9 +446,14 @@ button.secondary {
   transition: border-color 0.15s, transform 0.12s;
 }
 
-button.secondary:hover {
+button.secondary:hover:not(:disabled) {
   border-color: var(--accent);
   transform: translateY(-1px);
+}
+
+button.secondary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .empty {
@@ -479,6 +484,18 @@ button.secondary:hover {
   font-weight: 600;
   text-transform: uppercase;
   color: var(--text);
+}
+
+.ticker-change {
+  color: inherit;
+}
+
+.leaderboard .ticker-new.up {
+  color: #16803c;
+}
+
+.leaderboard .ticker-new.down {
+  color: #b42318;
 }
 
 .leaderboard .num,
