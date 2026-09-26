@@ -432,6 +432,10 @@ button.danger:hover:not(:disabled) {
   gap: 10px;
 }
 
+.backup-status {
+  margin-top: 12px;
+}
+
 button.secondary {
   appearance: none;
   border: 1px solid var(--border);

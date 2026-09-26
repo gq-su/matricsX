@@ -627,6 +627,11 @@ function App() {
             onChange={(e) => void onImportCsv(e.target.files?.[0])}
           />
         </div>
+        {status ? (
+          <p className="status backup-status" role="status" aria-live="polite">
+            {status}
+          </p>
+        ) : null}
       </section>
 
       <section className="leaderboard" aria-labelledby="leader-heading">

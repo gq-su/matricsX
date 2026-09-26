@@ -93,6 +93,21 @@ async function ensureDirPermission(
   }
 }
 
+async function requireExistingDirPermission(
+  dir: FileSystemDirectoryHandle,
+): Promise<void> {
+  const permission = await (
+    dir as FileSystemDirectoryHandle & {
+      queryPermission: (options: { mode: 'readwrite' }) => Promise<PermissionState>
+    }
+  ).queryPermission({ mode: 'readwrite' })
+  if (permission !== 'granted') {
+    throw new Error(
+      'Data folder access needs to be renewed. Click Link data folder, choose the same data folder, then retry the CSV import.',
+    )
+  }
+}
+
 async function writeToDirectory(
   dir: FileSystemDirectoryHandle,
   snapshot: BackupSnapshot,
@@ -202,6 +217,7 @@ function isReadableBackupSnapshot(value: unknown): boolean {
 function emptySnapshot(): BackupSnapshot {
   return {
     version: 3,
+    marketDay: todayMarketDay(),
     exportedAt: new Date().toISOString(),
     tickers: [],
     leaders: [],
@@ -240,7 +256,9 @@ export async function restoreLatestBackupForCsvImport(): Promise<{
   latestMarketDay: string | null
 }> {
   const dir = await selectCsvImportDirectory()
-  await ensureDirPermission(dir)
+  // CSV selection is asynchronous, so it no longer has a browser user
+  // activation by the time this runs. Do not request permission here.
+  await requireExistingDirPermission(dir)
   let latest: SnapshotCandidate | null = null
 
   for await (const entry of dir.values()) {
@@ -274,8 +292,9 @@ export async function linkDataFolder(): Promise<string> {
   const dir = await pick({ id: 'matricsx-data', mode: 'readwrite' })
   await setStoredDirHandle(dir)
 
-  const snapshot = await exportSnapshot()
-  const filename = backupFileName()
+  const marketDay = todayMarketDay()
+  const snapshot = await exportSnapshot(marketDay)
+  const filename = backupFileName(marketDay)
   await writeToDirectory(dir, snapshot, filename)
   const pruned = await pruneOldBackups()
   return pruned > 0 ? `${dir.name} (pruned ${pruned} old)` : dir.name
@@ -285,7 +304,7 @@ export async function linkDataFolder(): Promise<string> {
 export async function writeBackup(
   marketDay = todayMarketDay(),
 ): Promise<'folder' | 'download'> {
-  const snapshot = await exportSnapshot()
+  const snapshot = await exportSnapshot(marketDay)
   const filename = backupFileName(marketDay)
   const dir = await getStoredDirHandle()
 
@@ -306,7 +325,7 @@ export async function writeBackup(
 export async function exportBackupDownload(
   marketDay = todayMarketDay(),
 ): Promise<string> {
-  const snapshot = await exportSnapshot()
+  const snapshot = await exportSnapshot(marketDay)
   const filename = backupFileName(marketDay)
   const dir = await getStoredDirHandle()
 

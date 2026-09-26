@@ -420,15 +420,21 @@ export async function getLeaderboard(closeTime: string): Promise<LeaderRow[]> {
 
 export type BackupSnapshot = {
   version: 3
+  /** Market day represented by this file; matches its dated filename. */
+  marketDay: string
+  /** Actual UTC instant when this snapshot was written. */
   exportedAt: string
   tickers: Ticker[]
   leaders: Leader[]
 }
 
-export async function exportSnapshot(): Promise<BackupSnapshot> {
+export async function exportSnapshot(
+  marketDay = todayMarketDay(),
+): Promise<BackupSnapshot> {
   const [tickers, leaders] = await Promise.all([listTickers(), listLeaders()])
   return {
     version: 3,
+    marketDay,
     exportedAt: new Date().toISOString(),
     tickers,
     leaders,

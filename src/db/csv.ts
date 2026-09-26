@@ -111,7 +111,16 @@ export async function importPriceVolumeLeaderboardCsv(
     csvPriceVol: number
     percentChange: number
   }> = []
-  let csvMarketDay: string | null = null
+  const timeColumn = keys.indexOf('time')
+  const explicitMarketDays = new Set(
+    data
+      .map((values) => marketDay(values[timeColumn] ?? ''))
+      .filter((day): day is string => day != null),
+  )
+  if (explicitMarketDays.size > 1) {
+    throw new Error('CSV must contain rows from one market day only.')
+  }
+  const csvMarketDay = explicitMarketDays.values().next().value ?? null
 
   for (const [index, values] of data.entries()) {
     const record = Object.fromEntries(
@@ -122,13 +131,31 @@ export async function importPriceVolumeLeaderboardCsv(
     const percentChange = csvSignedNumber(record['%change'])
     const volume = csvNumber(record.volume)
     const priceVol = csvNumber(record['price vol'])
-    const day = marketDay(record.time)
+    // The export often gives the full date on some rows and only the market
+    // time (for example, "18:30 ET") on the remainder. Apply the one
+    // explicit date found above to all time-only rows.
+    const day: string | null = marketDay(record.time) ?? csvMarketDay
 
     if (!label && values.every((value) => !value.trim())) continue
     // Barchart exports end with an attribution row such as
     // "Downloaded from Barchart.com as of …,,,,,,,". It is metadata, not a
     // market record, and must not prevent the preceding ticker rows importing.
     if (label.startsWith('downloaded from barchart.com')) continue
+    // Some exports append a final plain-text note instead of Barchart's
+    // standard attribution. A note can include a download date, but is not a
+    // ticker symbol and has none of the three price/volume measures. Ignore
+    // it only after at least one valid record; ticker-shaped final rows still
+    // go through the normal validation below.
+    const isTickerSymbol = /^[a-z][a-z0-9.\-/^=]*$/i.test(label)
+    const isTrailingMetadata =
+      index === data.length - 1 &&
+      entries.length > 0 &&
+      !isTickerSymbol &&
+      close == null &&
+      percentChange == null &&
+      volume == null &&
+      priceVol == null
+    if (isTrailingMetadata) continue
     if (!label || close == null || percentChange == null || volume == null || priceVol == null || day == null) {
       throw new Error(
         `CSV row ${index + 2} needs Symbol, Latest, %Change, Volume, Price Vol, and Time.`,
@@ -137,7 +164,6 @@ export async function importPriceVolumeLeaderboardCsv(
     if (csvMarketDay && csvMarketDay !== day) {
       throw new Error('CSV must contain rows from one market day only.')
     }
-    csvMarketDay = day
     if (entries.some((item) => item.label === label)) {
       throw new Error(`CSV has duplicate ${label.toUpperCase()} rows for ${day}.`)
     }
