@@ -290,7 +290,7 @@ export async function deleteLeadersForClose(closeTime: string): Promise<number> 
   }
 
   const db = await openDb()
-  const tx = db.transaction(LEADERS, 'readwrite')
+  const tx = db.transaction([TICKERS, LEADERS], 'readwrite')
   const store = tx.objectStore(LEADERS)
   const existing = await req<Leader[]>(store.index('closeTime').getAll(closeTime))
 
@@ -298,16 +298,58 @@ export async function deleteLeadersForClose(closeTime: string): Promise<number> 
     await req(store.delete(row.id))
   }
 
+  // A ticker is shared by every saved close. Remove it only when this deletion
+  // leaves no inputs anywhere that still reference it.
+  const tickerStore = tx.objectStore(TICKERS)
+  for (const tickerId of new Set(existing.map((row) => row.tickerId))) {
+    const remaining = await req<Leader[]>(store.index('tickerId').getAll(tickerId))
+    if (remaining.length === 0) {
+      await req(tickerStore.delete(tickerId))
+    }
+  }
+
   await txDone(tx)
   db.close()
   return existing.length
 }
 
-/** Delete one leader row by id. */
+/**
+ * Delete one input row. When a top-5 row is removed, the highest vol-p
+ * sub-zone row for that close is promoted so the leaderboard stays full.
+ * The ticker record is removed when no input row anywhere still references it.
+ */
 export async function deleteLeader(id: number): Promise<void> {
   const db = await openDb()
-  const tx = db.transaction(LEADERS, 'readwrite')
-  await req(tx.objectStore(LEADERS).delete(id))
+  const tx = db.transaction([TICKERS, LEADERS], 'readwrite')
+  const leaders = tx.objectStore(LEADERS)
+  const row = await req<Leader | undefined>(leaders.get(id))
+
+  if (!row) {
+    await txDone(tx)
+    db.close()
+    return
+  }
+
+  if (withSource(row) === 'top5') {
+    const candidates = (await req<Leader[]>(
+      leaders.index('closeTime').getAll(row.closeTime),
+    ))
+      .filter((candidate) => candidate.id !== row.id && withSource(candidate) === 'prior')
+      .sort((a, b) => b.volprice - a.volprice)
+
+    const next = candidates[0]
+    if (next) {
+      await req(leaders.put({ ...next, source: 'top5' }))
+    }
+  }
+
+  await req(leaders.delete(id))
+
+  const remaining = await req<Leader[]>(leaders.index('tickerId').getAll(row.tickerId))
+  if (remaining.length === 0) {
+    await req(tx.objectStore(TICKERS).delete(row.tickerId))
+  }
+
   await txDone(tx)
   db.close()
 }
